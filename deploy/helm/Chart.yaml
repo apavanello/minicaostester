@@ -1,0 +1,6 @@
+apiVersion: v2
+name: chaos-target
+description: A Helm chart para deploy rápido do Chaos & Load Target MVP em múltiplos clusters. Construído para suportar injeções de latência orgânicas.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

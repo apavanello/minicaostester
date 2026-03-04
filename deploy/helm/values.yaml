@@ -1,0 +1,39 @@
+# Parâmetros padrão pro Chaos App. Feito para ArgoCD.
+replicaCount: 1
+
+image:
+  repository: chaos-target
+  pullPolicy: IfNotPresent
+  tag: "local"  # Alvo de atualização via CI/CD
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# === VARIÁVEIS DE SIMULAÇÃO (CHAOS) === #
+chaos:
+  # Latência Sintética
+  minDelayMs: 10
+  maxDelayMs: 100
+  
+  # Carga de CPU Sintética
+  burnCpu: false
+  cpuComplexity: 50000
+  
+  # Service Chaining (URLs por vírgula)
+  externalServices: ""
+  maxCallDepth: 5
+  requestTimeout: 5
+
+resources:
+  # Opcional, caso queira restringir muito. Default é aberto no modo MVP para permitir que o QA sobrecarregue Node.
+  # limits:
+  #   cpu: 100m
+  #   memory: 64Mi
+  # requests:
+  #   cpu: 10m
+  #   memory: 16Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
