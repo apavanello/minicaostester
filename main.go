@@ -291,6 +291,18 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
+	http.HandleFunc("/status/{statusCode}", func(w http.ResponseWriter, r *http.Request) {
+		statusCode := r.URL.Path[1:]
+		statusCodeInt, err := strconv.Atoi(statusCode)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCodeInt)
+		json.NewEncoder(w).Encode(map[string]string{"status": statusCode})
+	})
+
 	if err := http.ListenAndServe(":"+cfg.Port, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
