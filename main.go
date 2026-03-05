@@ -169,8 +169,9 @@ func main() {
 		cfg.MinStartDelayMs, cfg.MaxStartDelayMs, cfg.MinDelayMs, cfg.MaxDelayMs, cfg.BurnCPU, cfg.CPUComplexity, cfg.MaxCallDepth, cfg.ExternalServices, cfg.Hostname)
 
 	if cfg.MinStartDelayMs+cfg.MaxStartDelayMs > 0 {
-		log.Printf("Delay Start, Please wait...")
-		log.Printf("Application Started in %dms\n", computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
+		log.Printf("Delay Start, Please wait %dms", computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
+		time.Sleep(computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
+		log.Printf("Application Started")
 	}
 
 	rand.Seed(time.Now().UnixNano())
