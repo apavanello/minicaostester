@@ -1,5 +1,5 @@
 # Estágio 1: Builder
-FROM golang:1.18-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Instalar dependências de sistema (certificados SSL e timezone)
 RUN apk --no-cache add ca-certificates tzdata

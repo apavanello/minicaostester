@@ -1,4 +1,3 @@
-// Package main implements a lightweight HTTP server for load testing and chaos engineering experiments.
 package main
 
 import (
@@ -15,9 +14,12 @@ import (
 	"time"
 )
 
-// Config holding the environment variables
+var sink float64
+
 type Config struct {
 	Port             string
+	MinStartDelayMs  int
+	MaxStartDelayMs  int
 	MinDelayMs       int
 	MaxDelayMs       int
 	BurnCPU          bool
@@ -25,18 +27,19 @@ type Config struct {
 	ExternalServices []string
 	MaxCallDepth     int
 	RequestTimeout   int
+	Hostname         string
 }
 
-// HealthResponse DTO for the telemetry
 type HealthResponse struct {
-	StatusCode     int               `json:"status_code"`
-	ModeActive     string            `json:"mode_active"`
-	DepthLevel     int               `json:"depth_level"`
-	ReachedLimit   bool              `json:"reached_limit"`
-	CPUTime        string            `json:"cpu_time"`
-	WaitTime       string            `json:"wait_time"`
-	TotalTime      string            `json:"total_time"`
-	ServicesCalled map[string]string `json:"services_called,omitempty"`
+	StatusCode            int               `json:"status_code"`
+	ModeActive            string            `json:"mode_active"`
+	DepthLevel            int               `json:"depth_level"`
+	ReachedLimit          bool              `json:"reached_limit"`
+	CPUTime               string            `json:"cpu_time"`
+	WaitTime              string            `json:"wait_time"`
+	TotalTime             string            `json:"total_time"`
+	ServicesCalled        map[string]string `json:"services_called,omitempty"`
+	ApplicationAttributes string            `json:"application_attributes,omitempty"`
 }
 
 func parseEnvInt(key string, defaultVal int) int {
@@ -57,13 +60,24 @@ func parseEnvBool(key string, defaultVal bool) bool {
 	return defaultVal
 }
 
-func loadConfig() Config {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+func parseEnvString(key string, defaultVal string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
 	}
+	return defaultVal
+}
 
-	extSvcStr := os.Getenv("EXTERNAL_SERVICES")
+func loadHostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		h = "unknown"
+	}
+	return parseEnvString("HOSTNAME", h)
+}
+
+func loadConfig() Config {
+	port := parseEnvString("PORT", "8080")
+	extSvcStr := parseEnvString("EXTERNAL_SERVICES", "")
 	var extSvc []string
 	if extSvcStr != "" {
 		parts := strings.Split(extSvcStr, ",")
@@ -76,6 +90,8 @@ func loadConfig() Config {
 
 	return Config{
 		Port:             port,
+		MinStartDelayMs:  parseEnvInt("MIN_START_DELAY_MS", 0),
+		MaxStartDelayMs:  parseEnvInt("MAX_START_DELAY_MS", 0),
 		MinDelayMs:       parseEnvInt("MIN_DELAY_MS", 10),
 		MaxDelayMs:       parseEnvInt("MAX_DELAY_MS", 100),
 		BurnCPU:          parseEnvBool("BURN_CPU", false),
@@ -83,20 +99,17 @@ func loadConfig() Config {
 		ExternalServices: extSvc,
 		MaxCallDepth:     parseEnvInt("MAX_CALL_DEPTH", 5),
 		RequestTimeout:   parseEnvInt("REQUEST_TIMEOUT", 5),
+		Hostname:         loadHostname(),
 	}
 }
 
 func burnCPU(complexity int) time.Duration {
 	start := time.Now()
-	// An arbitrary mathematical loop to stress the CPU
 	res := 0.0
 	for i := 0; i < complexity; i++ {
 		res += math.Sqrt(float64(i)) * math.Pow(float64(i), 0.5)
 	}
-	// prevent compiler optimization
-	if res < 0 {
-		fmt.Print("")
-	}
+	sink = res
 	return time.Since(start)
 }
 
@@ -120,7 +133,14 @@ func getDepth(r *http.Request) int {
 	return d
 }
 
-// prioritizeStatusCode returns the worst status code representing a failure cascade.
+func getCaller(r *http.Request) string {
+	callerStr := r.Header.Get("X-Caller-Hostname")
+	if callerStr == "" {
+		return "Externo"
+	}
+	return callerStr
+}
+
 func prioritizeStatusCode(statuses []int) int {
 	worst := 200
 	for _, s := range statuses {
@@ -145,8 +165,13 @@ func main() {
 	cfg := loadConfig()
 
 	log.Printf("Starting Chaos Target on port %s", cfg.Port)
-	log.Printf("Config loaded: MIN_DELAY_MS=%d MAX_DELAY_MS=%d BURN_CPU=%t CPU_COMPLEXITY=%d M_DEPTH=%d URLS=%v",
-		cfg.MinDelayMs, cfg.MaxDelayMs, cfg.BurnCPU, cfg.CPUComplexity, cfg.MaxCallDepth, cfg.ExternalServices)
+	log.Printf("Config loaded: MIN_START_DELAY_MS=%d MAX_START_DELAY_MS=%d MIN_DELAY_MS=%d MAX_DELAY_MS=%d BURN_CPU=%t CPU_COMPLEXITY=%d MAX_CALL_DEPTH=%d URLS=%v HOSTNAME=%s",
+		cfg.MinStartDelayMs, cfg.MaxStartDelayMs, cfg.MinDelayMs, cfg.MaxDelayMs, cfg.BurnCPU, cfg.CPUComplexity, cfg.MaxCallDepth, cfg.ExternalServices, cfg.Hostname)
+
+	if cfg.MinStartDelayMs+cfg.MaxStartDelayMs > 0 {
+		log.Printf("Delay Start, Please wait...")
+		log.Printf("Application Started in %dms\n", computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
+	}
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -157,22 +182,28 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		depth := getDepth(r)
+		caller := getCaller(r)
 
-		// 1. Circuit Breaker for Depth
+		log.Printf("Request received: caller=%s, depth=%d", caller, depth)
 		if depth >= cfg.MaxCallDepth {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(HealthResponse{
-				StatusCode:   200,
-				ModeActive:   "circuit_breaker_open",
-				DepthLevel:   depth,
-				ReachedLimit: true,
-				TotalTime:    fmt.Sprintf("%v", time.Since(start)),
-			})
-			return
+			// Bypass
+			if cfg.MaxCallDepth < 0 {
+				log.Printf("Circuit Breaker Bypassed, MaxCallDepth=%d, CurrentDepth=%d", cfg.MaxCallDepth, depth)
+			} else {
+				log.Printf("Circuit Breaker Opened, MaxCallDepth=%d, CurrentDepth=%d", cfg.MaxCallDepth, depth)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(HealthResponse{
+					StatusCode:   200,
+					ModeActive:   "circuit_breaker_open",
+					DepthLevel:   depth,
+					ReachedLimit: true,
+					TotalTime:    fmt.Sprintf("%v", time.Since(start)),
+				})
+				return
+			}
 		}
 
-		// 2. Burn CPU if configured
 		var cpuDur time.Duration
 		if cfg.BurnCPU {
 			cpuDur = burnCPU(cfg.CPUComplexity)
@@ -182,10 +213,10 @@ func main() {
 		var delayDur time.Duration
 		finalStatus := 200
 		servicesCalled := make(map[string]string)
-		mode := "standalone (io)"
+		mode := "standalone"
 
 		if isAggregator {
-			mode = "service_chaining (bff)"
+			mode = "service_chaining (BFF)"
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 			statusCodes := make([]int, 0, len(cfg.ExternalServices))
@@ -203,8 +234,8 @@ func main() {
 						return
 					}
 
-					// Propagate next depth
 					req.Header.Set("X-Call-Depth", strconv.Itoa(depth+1))
+					req.Header.Set("X-Caller-Hostname", cfg.Hostname)
 
 					resp, err := httpClient.Do(req)
 
@@ -212,7 +243,6 @@ func main() {
 					defer mu.Unlock()
 
 					if err != nil {
-						// Usually timeout or connection refused
 						servicesCalled[targetURL] = "error / timeout"
 						statusCodes = append(statusCodes, 504)
 					} else {
@@ -223,13 +253,11 @@ func main() {
 				}(url)
 			}
 
-			// Wait for all HTTP calls
 			wg.Wait()
-			delayDur = time.Since(start) - cpuDur // Delay is the time spent waiting network
+			delayDur = time.Since(start) - cpuDur
 			finalStatus = prioritizeStatusCode(statusCodes)
 
 		} else {
-			// Standalone mode: Apply synthetic latency
 			delayDur = computeDelay(cfg.MinDelayMs, cfg.MaxDelayMs)
 			if delayDur > 0 {
 				time.Sleep(delayDur)
@@ -240,6 +268,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(finalStatus)
 
+		log.Printf("Request ended: caller=%s, status=%d, total time=%v", caller, finalStatus, totalDur)
 		resp := HealthResponse{
 			StatusCode:     finalStatus,
 			ModeActive:     mode,
