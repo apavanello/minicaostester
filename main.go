@@ -291,16 +291,17 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
-	http.HandleFunc("/status/{statusCode}", func(w http.ResponseWriter, r *http.Request) {
-		statusCode := r.URL.Path[1:]
-		statusCodeInt, err := strconv.Atoi(statusCode)
+	http.HandleFunc("/status/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Request received to /status/%s", r.URL.Path)
+		statusCodeStr := strings.TrimPrefix(r.URL.Path, "/status/")
+		statusCodeInt, err := strconv.Atoi(statusCodeStr)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCodeInt)
-		json.NewEncoder(w).Encode(map[string]string{"status": statusCode})
+		json.NewEncoder(w).Encode(map[string]string{"status": statusCodeStr})
 	})
 
 	if err := http.ListenAndServe(":"+cfg.Port, nil); err != nil {
