@@ -169,8 +169,9 @@ func main() {
 		cfg.MinStartDelayMs, cfg.MaxStartDelayMs, cfg.MinDelayMs, cfg.MaxDelayMs, cfg.BurnCPU, cfg.CPUComplexity, cfg.MaxCallDepth, cfg.ExternalServices, cfg.Hostname)
 
 	if cfg.MinStartDelayMs+cfg.MaxStartDelayMs > 0 {
-		log.Printf("Delay Start, Please wait %dms", computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
-		time.Sleep(computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs))
+		startDelay := computeDelay(cfg.MinStartDelayMs, cfg.MaxStartDelayMs)
+		log.Printf("Delay Start, Please wait %dms", startDelay.Milliseconds())
+		time.Sleep(startDelay)
 		log.Printf("Application Started")
 	}
 
