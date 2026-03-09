@@ -165,7 +165,7 @@ func prioritizeStatusCode(statuses []int) int {
 
 func debug(s string, cfg Config) {
 	if cfg.Debug {
-		log.Printf("DEBUG: %s", s)
+		log.Printf("DEBUG: %+v", s)
 	}
 }
 
