@@ -29,6 +29,7 @@ type Config struct {
 	RequestTimeout   int
 	Hostname         string
 	Debug            bool
+	ClusterName      string
 }
 
 type HealthResponse struct {
@@ -43,6 +44,7 @@ type HealthResponse struct {
 	ApplicationAttributes string            `json:"application_attributes,omitempty"`
 	Caller                string            `json:"caller,omitempty"`
 	Hostname              string            `json:"hostname,omitempty"`
+	ClusterName           string            `json:"cluster_name,omitempty"`
 }
 
 func parseEnvInt(key string, defaultVal int) int {
@@ -104,6 +106,7 @@ func loadConfig() Config {
 		RequestTimeout:   parseEnvInt("REQUEST_TIMEOUT", 5),
 		Hostname:         loadHostname(),
 		Debug:            parseEnvBool("DEBUG", false),
+		ClusterName:      parseEnvString("CLUSTER_NAME", "unknown"),
 	}
 }
 
@@ -286,7 +289,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(finalStatus)
 
-		log.Printf("Request ended: caller=%s, status=%d, total time=%v", caller, finalStatus, totalDur)
+		log.Printf("Request ended: cluster=%s, caller=%s, status=%d, total time=%v", cfg.ClusterName, caller, finalStatus, totalDur)
 		resp := HealthResponse{
 			StatusCode:     finalStatus,
 			Caller:         caller,
@@ -298,6 +301,7 @@ func main() {
 			TotalTime:      fmt.Sprintf("%v", totalDur),
 			ServicesCalled: servicesCalled,
 			Hostname:       cfg.Hostname,
+			ClusterName:    cfg.ClusterName,
 		}
 
 		json.NewEncoder(w).Encode(resp)
