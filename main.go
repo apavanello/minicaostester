@@ -28,6 +28,7 @@ type Config struct {
 	MaxCallDepth     int
 	RequestTimeout   int
 	Hostname         string
+	Debug            bool
 }
 
 type HealthResponse struct {
@@ -100,6 +101,7 @@ func loadConfig() Config {
 		MaxCallDepth:     parseEnvInt("MAX_CALL_DEPTH", 5),
 		RequestTimeout:   parseEnvInt("REQUEST_TIMEOUT", 5),
 		Hostname:         loadHostname(),
+		Debug:            parseEnvBool("DEBUG", false),
 	}
 }
 
@@ -161,6 +163,12 @@ func prioritizeStatusCode(statuses []int) int {
 	return worst
 }
 
+func debug(s string, cfg Config) {
+	if cfg.Debug {
+		log.Printf("DEBUG: %s", s)
+	}
+}
+
 func main() {
 	cfg := loadConfig()
 
@@ -187,6 +195,7 @@ func main() {
 		caller := getCaller(r)
 
 		log.Printf("Request received: caller=%s, depth=%d", caller, depth)
+		debug(fmt.Sprint(r), cfg)
 		if depth >= cfg.MaxCallDepth {
 			// Bypass
 			if cfg.MaxCallDepth < 0 {
@@ -239,7 +248,12 @@ func main() {
 					req.Header.Set("X-Call-Depth", strconv.Itoa(depth+1))
 					req.Header.Set("X-Caller-Hostname", cfg.Hostname)
 
+					debug(fmt.Sprintf("Calling %s", targetURL), cfg)
+					debug(fmt.Sprint(req), cfg)
+
 					resp, err := httpClient.Do(req)
+
+					debug(fmt.Sprint(resp), cfg)
 
 					mu.Lock()
 					defer mu.Unlock()
