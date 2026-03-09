@@ -41,6 +41,8 @@ type HealthResponse struct {
 	TotalTime             string            `json:"total_time"`
 	ServicesCalled        map[string]string `json:"services_called,omitempty"`
 	ApplicationAttributes string            `json:"application_attributes,omitempty"`
+	Caller                string            `json:"caller,omitempty"`
+	Hostname              string            `json:"hostname,omitempty"`
 }
 
 func parseEnvInt(key string, defaultVal int) int {
@@ -287,6 +289,7 @@ func main() {
 		log.Printf("Request ended: caller=%s, status=%d, total time=%v", caller, finalStatus, totalDur)
 		resp := HealthResponse{
 			StatusCode:     finalStatus,
+			Caller:         caller,
 			ModeActive:     mode,
 			DepthLevel:     depth,
 			ReachedLimit:   false,
@@ -294,12 +297,13 @@ func main() {
 			WaitTime:       fmt.Sprintf("%v", delayDur),
 			TotalTime:      fmt.Sprintf("%v", totalDur),
 			ServicesCalled: servicesCalled,
+			Hostname:       cfg.Hostname,
 		}
 
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	http.HandleFunc("/healthz/status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
